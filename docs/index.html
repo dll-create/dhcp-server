@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A lightweight DHCP server with modern web UI for macOS. Assign IP addresses to BMC/IPMI ports in seconds — no Windows VM needed.">
+  <meta name="keywords" content="DHCP server, macOS, BMC, IPMI, data center, network provisioning, open source">
+  <title>DHCP Server — Lightweight BMC Provisioning Tool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #050a14;
+      --surface: rgba(15, 23, 42, 0.6);
+      --border: rgba(56, 189, 248, 0.1);
+      --accent: #38bdf8;
+      --accent-green: #34d399;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --font: 'Inter', -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    html { font-size: 16px; scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Background ─────────────────────── */
+    .bg-grid {
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(56,189,248,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(56,189,248,0.02) 1px, transparent 1px);
+      background-size: 80px 80px;
+      pointer-events: none; z-index: 0;
+    }
+
+    .glow {
+      position: fixed; border-radius: 50%;
+      filter: blur(150px); pointer-events: none; z-index: 0;
+    }
+    .glow-1 { width: 600px; height: 600px; background: rgba(56,189,248,0.08); top: -200px; right: -100px; }
+    .glow-2 { width: 500px; height: 500px; background: rgba(52,211,153,0.06); bottom: -150px; left: -100px; }
+    .glow-3 { width: 400px; height: 400px; background: rgba(139,92,246,0.05); top: 50%; left: 50%; transform: translate(-50%,-50%); }
+
+    /* ── Nav ────────────────────────────── */
+    nav {
+      position: fixed; top: 0; width: 100%; z-index: 100;
+      backdrop-filter: blur(20px); background: rgba(5,10,20,0.8);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto; padding: 16px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-weight: 700; font-size: 1.1rem;
+      background: linear-gradient(135deg, var(--text), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a {
+      color: var(--text-dim); text-decoration: none; font-size: 0.9rem;
+      font-weight: 500; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* ── Hero ───────────────────────────── */
+    .hero {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 160px 32px 80px; text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 100px;
+      background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.2);
+      color: var(--accent-green); font-size: 0.8rem; font-weight: 600;
+      margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 800;
+      line-height: 1.1; letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--accent), var(--accent-green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 1.15rem; color: var(--text-dim);
+      max-width: 600px; margin: 0 auto 40px; line-height: 1.7;
+    }
+    .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 32px; border-radius: 12px;
+      font-family: var(--font); font-size: 0.95rem; font-weight: 600;
+      text-decoration: none; cursor: pointer; transition: all 0.25s;
+      border: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+      color: #fff; box-shadow: 0 4px 24px rgba(56,189,248,0.25);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(56,189,248,0.35); }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); background: rgba(56,189,248,0.05); }
+
+    /* ── Terminal Preview ───────────────── */
+    .terminal {
+      max-width: 620px; margin: 60px auto 0;
+      background: rgba(15,23,42,0.8); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+      backdrop-filter: blur(12px); text-align: left;
+    }
+    .terminal-bar {
+      padding: 12px 16px; display: flex; gap: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .terminal-dot.r { background: #ef4444; }
+    .terminal-dot.y { background: #eab308; }
+    .terminal-dot.g { background: #22c55e; }
+    .terminal-code {
+      padding: 20px 24px;
+      font-family: var(--mono); font-size: 0.85rem;
+      color: var(--text-dim); line-height: 1.8;
+    }
+    .terminal-code .cmd { color: var(--accent-green); }
+    .terminal-code .comment { color: var(--text-muted); }
+
+    /* ── Features ───────────────────────── */
+    .features {
+      position: relative; z-index: 1;
+      max-width: 1100px; margin: 0 auto;
+      padding: 80px 32px;
+    }
+    .features-title {
+      text-align: center; font-size: 2rem; font-weight: 700;
+      margin-bottom: 16px; letter-spacing: -0.02em;
+    }
+    .features-sub {
+      text-align: center; color: var(--text-dim);
+      margin-bottom: 60px; font-size: 1.05rem;
+    }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 32px 28px;
+      transition: all 0.3s ease;
+    }
+    .feature-card:hover { border-color: rgba(56,189,248,0.25); transform: translateY(-4px); }
+    .feature-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px; font-size: 1.5rem;
+    }
+    .fi-shield { background: rgba(52,211,153,0.1); }
+    .fi-globe { background: rgba(56,189,248,0.1); }
+    .fi-zap { background: rgba(251,191,36,0.1); }
+    .fi-code { background: rgba(139,92,246,0.1); }
+    .fi-layers { background: rgba(248,113,113,0.1); }
+    .fi-terminal { background: rgba(52,211,153,0.1); }
+    .feature-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+    .feature-card p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.6; }
+
+    /* ── CTA ────────────────────────────── */
+    .cta {
+      position: relative; z-index: 1;
+      max-width: 700px; margin: 0 auto;
+      padding: 80px 32px; text-align: center;
+    }
+    .cta h2 { font-size: 2rem; font-weight: 700; margin-bottom: 16px; }
+    .cta p { color: var(--text-dim); margin-bottom: 32px; font-size: 1.05rem; }
+
+    /* ── Footer ─────────────────────────── */
+    footer {
+      position: relative; z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 32px;
+      text-align: center; color: var(--text-muted); font-size: 0.85rem;
+    }
+
+    /* ── Responsive ─────────────────────── */
+    @media (max-width: 768px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .nav-links { gap: 20px; }
+      .hero { padding: 130px 20px 60px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-grid"></div>
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="glow glow-3"></div>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <div class="nav-logo">⚡ DHCP Server</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="https://github.com/dll-create/dhcp-server" target="_blank">GitHub</a>
+        <a href="https://github.com/dll-create/dhcp-server/releases" class="btn btn-outline" style="padding:8px 20px;font-size:0.85rem;">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">🛡️ Built-in Network Safety Probe</div>
+    <h1>DHCP Server for<br><span>Field Engineers</span></h1>
+    <p>Assign IP addresses to server BMC/IPMI ports in seconds. Plug in a cable, click Start. No Windows VM, no command line, no risk.</p>
+
+    <div class="hero-actions">
+      <a href="https://github.com/dll-create/dhcp-server/releases" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+      <a href="https://github.com/dll-create/dhcp-server" class="btn btn-outline">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View Source
+      </a>
+    </div>
+
+    <!-- Terminal Preview -->
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot r"></div>
+        <div class="terminal-dot y"></div>
+        <div class="terminal-dot g"></div>
+      </div>
+      <div class="terminal-code">
+        <span class="comment"># Install</span><br>
+        <span class="cmd">$</span> git clone https://github.com/dll-create/dhcp-server.git<br>
+        <span class="cmd">$</span> cd dhcp-server && npm install<br><br>
+        <span class="comment"># Run</span><br>
+        <span class="cmd">$</span> sudo node server.js<br><br>
+        <span class="comment"># Open http://localhost:3000 ✨</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <h2 class="features-title">Why DHCP Server?</h2>
+    <p class="features-sub">Built by engineers, for engineers. Every feature solves a real pain point.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon fi-shield">🛡️</div>
+        <h3>Network Safety Probe</h3>
+        <p>Automatically detects existing DHCP servers before starting. Prevents accidental IP conflicts in production networks.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon fi-zap">⚡</div>
+        <h3>One-Click Start</h3>
+        <p>Select interface, click Start. No config files, no command line. Sensible defaults get you running in seconds.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon fi-globe">🌐</div>
+        <h3>Bilingual UI</h3>
+        <p>Full English & 中文 support with one-click toggle. Auto-detects your system language.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon fi-code">📡</div>
+        <h3>Full DHCP Stack</h3>
+        <p>Custom RFC 2131 implementation. DISCOVER → OFFER → REQUEST → ACK. No third-party DHCP libraries.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon fi-layers">📊</div>
+        <h3>Real-Time Dashboard</h3>
+        <p>Live lease table, IP pool stats, and streaming server logs via Server-Sent Events.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon fi-terminal">💻</div>
+        <h3>Desktop App</h3>
+        <p>Optional Electron wrapper for a native macOS experience. Or just use the browser — your choice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <h2>Ready to simplify BMC provisioning?</h2>
+    <p>Free, open-source, MIT licensed. Works on macOS and Linux.</p>
+    <a href="https://github.com/dll-create/dhcp-server" class="btn btn-primary">
+      Get Started →
+    </a>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>Made with ❤️ for data center engineers · MIT License · <a href="https://github.com/dll-create/dhcp-server" style="color:var(--accent);text-decoration:none;">GitHub</a></p>
+  </footer>
+
+</body>
+</html>

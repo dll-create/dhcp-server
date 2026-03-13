@@ -1,0 +1,40 @@
+{
+  "name": "dhcp-server",
+  "version": "1.0.0",
+  "description": "macOS DHCP Server with native UI for BMC network provisioning",
+  "main": "main.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "electron": "electron .",
+    "build": "electron-builder --mac",
+    "build:dir": "electron-builder --mac --dir"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.dhcp.server",
+    "productName": "DHCP Server",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dir",
+      "icon": null
+    },
+    "files": [
+      "main.js",
+      "server.js",
+      "dhcp/**/*",
+      "public/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      "start.sh",
+      "README.md"
+    ]
+  }
+}

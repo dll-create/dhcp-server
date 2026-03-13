@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="macOS DHCP Server - Lightweight DHCP server for BMC network provisioning">
+  <title>DHCP Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+  <!-- Background Effects -->
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Header -->
+  <header id="app-header">
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2v20M2 12h20"/>
+            <circle cx="12" cy="12" r="4" fill="currentColor" opacity="0.3"/>
+          </svg>
+        </div>
+        <div>
+          <h1>DHCP Server</h1>
+          <p class="subtitle">BMC Network Provisioning Tool</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn-lang" id="langBtn" title="Switch Language">EN</button>
+        <div class="status-badge" id="statusBadge">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Stopped</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Control Panel -->
+    <section class="card control-panel" id="controlPanel">
+      <div class="card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m-7.071-3.929l4.243-4.243m5.656 0l4.243 4.243M1 12h6m6 0h6m-3.929-7.071l-4.243 4.243m0 5.656l-4.243 4.243"/>
+          </svg>
+          Configuration
+        </h2>
+      </div>
+
+      <div class="config-grid">
+        <!-- Network Interface Select -->
+        <div class="form-group span-2">
+          <label for="interfaceSelect">Network Interface</label>
+          <select id="interfaceSelect">
+            <option value="">Loading interfaces...</option>
+          </select>
+        </div>
+
+        <!-- IP Range -->
+        <div class="form-group">
+          <label for="rangeStart">IP Range Start</label>
+          <input type="text" id="rangeStart" value="192.168.1.100" placeholder="192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label for="rangeEnd">IP Range End</label>
+          <input type="text" id="rangeEnd" value="192.168.1.200" placeholder="192.168.1.200">
+        </div>
+
+        <!-- Subnet & Router -->
+        <div class="form-group">
+          <label for="subnetMask">Subnet Mask</label>
+          <input type="text" id="subnetMask" value="255.255.255.0" placeholder="255.255.255.0">
+        </div>
+        <div class="form-group">
+          <label for="router">Gateway</label>
+          <input type="text" id="router" value="" placeholder="Auto (Server IP)">
+        </div>
+
+        <!-- DNS & Lease -->
+        <div class="form-group">
+          <label for="dns">DNS Server</label>
+          <input type="text" id="dns" value="8.8.8.8" placeholder="8.8.8.8">
+        </div>
+        <div class="form-group">
+          <label for="leaseTime">Lease Time (seconds)</label>
+          <input type="number" id="leaseTime" value="3600" min="60" max="86400">
+        </div>
+      </div>
+
+      <!-- Start/Stop Button -->
+      <div class="action-row">
+        <button id="toggleBtn" class="btn-primary" onclick="toggleServer()">
+          <span class="btn-icon" id="toggleIcon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </span>
+          <span id="toggleText">Start Server</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Stats Row -->
+    <div class="stats-row" id="statsRow">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Pool Size</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statActive">0</div>
+        <div class="stat-label">Active Leases</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statAvailable">0</div>
+        <div class="stat-label">Available</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statServerIP">—</div>
+        <div class="stat-label">Server IP</div>
+      </div>
+    </div>
+
+    <!-- Leases Table -->
+    <section class="card" id="leasesSection">
+      <div class="card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+          </svg>
+          Active Leases
+        </h2>
+        <span class="badge" id="leaseCount">0</span>
+      </div>
+      <div class="table-wrapper">
+        <table id="leasesTable">
+          <thead>
+            <tr>
+              <th>MAC Address</th>
+              <th>IP Address</th>
+              <th>Assigned</th>
+              <th>Remaining</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="leasesBody">
+            <tr class="empty-row">
+              <td colspan="5">No active leases</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section class="card" id="logsSection">
+      <div class="card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          Server Logs
+        </h2>
+        <button class="btn-ghost" onclick="clearLogs()" title="Clear logs">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="log-container" id="logContainer">
+        <div class="log-entry log-info">Waiting for server to start...</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
