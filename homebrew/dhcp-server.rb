@@ -1,8 +1,8 @@
 class DhcpServer < Formula
   desc "Lightweight DHCP server with modern web UI for BMC provisioning"
   homepage "https://github.com/dll-create/dhcp-server"
-  url "https://github.com/dll-create/dhcp-server/archive/refs/tags/v1.0.0.tar.gz"
-  sha256 "REPLACE_WITH_ACTUAL_SHA256"
+  url "https://github.com/dll-create/dhcp-server/releases/download/v1.0.1/dhcp-server-source-1.0.1.tar.gz"
+  sha256 "d781a567df9280bf1f0494062e49af8168e4a2dc799403bdd9cd60ed51896dc4"
   license "MIT"
 
   depends_on "node"
