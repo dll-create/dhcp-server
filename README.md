@@ -25,6 +25,34 @@ A lightweight, cross-platform DHCP server with a modern web UI — built for fie
 
 ## 🚀 Quick Start
 
+### Homebrew
+
+```bash
+# Install
+brew tap dll-create/dhcp-server https://github.com/dll-create/dhcp-server
+brew install dhcp-server
+
+# Upgrade
+brew update
+brew upgrade dhcp-server
+```
+
+Start the Web UI:
+
+```bash
+dhcp-server
+```
+
+Start with full DHCP capability:
+
+```bash
+sudo dhcp-server
+```
+
+Open **http://localhost:3000** in your browser.
+
+### From Source
+
 ```bash
 # Clone
 git clone https://github.com/dll-create/dhcp-server.git
@@ -52,12 +80,14 @@ sudo npx electron .      # Full DHCP functionality
 ## 📖 Usage
 
 1. **Select** the Ethernet interface connected to your BMC/server
-2. **Configure** IP range, subnet mask, gateway, DNS (defaults work for most cases)
-3. **Click Start** — the safety probe runs first to check for conflicts
-4. **Connect** your Ethernet cable to the BMC port
-5. **Watch** the lease appear in the table as the BMC gets its IP
-6. **Use** the assigned IP to access the BMC web console
-7. **Stop** when done
+2. **Configure** IP range, subnet mask, gateway, DNS
+3. **Keep the IP range in the same subnet** as the selected interface
+4. **Click Start** — the safety probe runs first to check for conflicts
+5. **Connect** your Ethernet cable to the BMC port
+6. **Watch** the lease appear in the table as the BMC gets its IP
+7. **Use** the assigned IP to access the BMC web console
+8. **Verify the log shows** `DISCOVER -> OFFER -> REQUEST -> ACK`
+9. **Stop** when done
 
 ## 🏗️ Architecture
 
