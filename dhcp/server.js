@@ -8,7 +8,7 @@
 const dgram = require('dgram');
 const os = require('os');
 const protocol = require('./protocol');
-const { LeaseManager } = require('./leases');
+const { LeaseManager, ipToLong, longToIP } = require('./leases');
 
 const { MESSAGE_TYPES, OPTIONS } = protocol;
 
@@ -26,6 +26,8 @@ class DHCPServer {
       rangeStart: '192.168.1.100',
       rangeEnd: '192.168.1.200',
       leaseTime: 3600,
+      networkIP: '',
+      broadcastIP: '255.255.255.255',
     };
     this.logs = [];
     this.maxLogs = 500;
@@ -58,10 +60,21 @@ class DHCPServer {
       throw new Error('Cannot determine server IP. Please select a valid network interface.');
     }
 
+    validateIPv4(this.config.serverIP, 'Server IP');
+    validateIPv4(this.config.rangeStart, 'IP range start');
+    validateIPv4(this.config.rangeEnd, 'IP range end');
+    validateSubnetMask(this.config.subnetMask);
+
+    this.config.networkIP = calculateNetworkIP(this.config.serverIP, this.config.subnetMask);
+    this.config.broadcastIP = calculateBroadcastIP(this.config.serverIP, this.config.subnetMask);
+
     // Default router to server IP if not set
     if (!this.config.router) {
       this.config.router = this.config.serverIP;
     }
+
+    validateIPv4(this.config.router, 'Router');
+    validatePoolConfiguration(this.config);
 
     // Configure lease manager
     this.leaseManager.configure({
@@ -69,6 +82,12 @@ class DHCPServer {
       rangeEnd: this.config.rangeEnd,
       subnetMask: this.config.subnetMask,
       leaseTime: this.config.leaseTime,
+      excludedIPs: [
+        this.config.serverIP,
+        this.config.router,
+        this.config.networkIP,
+        this.config.broadcastIP,
+      ],
     });
 
     return new Promise((resolve, reject) => {
@@ -93,6 +112,7 @@ class DHCPServer {
         this.log('info', `Server IP: ${this.config.serverIP}`);
         this.log('info', `IP Range: ${this.config.rangeStart} - ${this.config.rangeEnd}`);
         this.log('info', `Subnet: ${this.config.subnetMask} | Router: ${this.config.router}`);
+        this.log('info', `Interface: ${this.config.interface || 'auto'} | Broadcast: ${this.config.broadcastIP}`);
         resolve();
       });
 
@@ -201,7 +221,7 @@ class DHCPServer {
     }
 
     // Verify the requested IP is available for this client
-    const offer = this.leaseManager.getOffer(clientMAC);
+    const offer = this.leaseManager.getReservedIP(clientMAC);
     if (!offer || (requestedIP && requestedIP !== '0.0.0.0' && offer !== requestedIP)) {
       // NAK
       this.log('warn', `NAK to ${clientMAC}: requested ${requestedIP} not available`);
@@ -272,6 +292,7 @@ class DHCPServer {
         [OPTIONS.SUBNET_MASK]: this.config.subnetMask,
         [OPTIONS.ROUTER]: this.config.router,
         [OPTIONS.DNS]: this.config.dns,
+        [OPTIONS.BROADCAST]: this.config.broadcastIP,
         [OPTIONS.LEASE_TIME]: leaseTime,
         [OPTIONS.RENEWAL_TIME]: Math.floor(leaseTime / 2),
         [OPTIONS.REBIND_TIME]: Math.floor(leaseTime * 0.875),
@@ -286,17 +307,17 @@ class DHCPServer {
     const buf = protocol.encode(responsePacket);
 
     // Determine destination: broadcast if flags indicate, or unicast
-    let destIP = '255.255.255.255';
+    let destIP = this.config.broadcastIP || '255.255.255.255';
     let destPort = 68;
 
     if (requestPacket.giaddr && requestPacket.giaddr !== '0.0.0.0') {
       destIP = requestPacket.giaddr;
       destPort = 67;
     } else if (requestPacket.flags & 0x8000) {
-      destIP = '255.255.255.255';
+      destIP = this.config.broadcastIP || '255.255.255.255';
     } else if (responsePacket.yiaddr && responsePacket.yiaddr !== '0.0.0.0') {
       // Could unicast, but broadcast is safer for PXE/BMC clients
-      destIP = '255.255.255.255';
+      destIP = this.config.broadcastIP || '255.255.255.255';
     }
 
     this.socket.send(buf, 0, buf.length, destPort, destIP, (err) => {
@@ -402,6 +423,85 @@ class DHCPServer {
       config: this.config,
       pool: this.leaseManager.getStats(),
     };
+  }
+}
+
+function calculateNetworkIP(ip, netmask) {
+  const networkLong = (ipToLong(ip) & ipToLong(netmask)) >>> 0;
+  return longToIP(networkLong);
+}
+
+function calculateBroadcastIP(ip, netmask) {
+  const maskLong = ipToLong(netmask);
+  const networkLong = (ipToLong(ip) & maskLong) >>> 0;
+  const broadcastLong = (networkLong | (~maskLong >>> 0)) >>> 0;
+  return longToIP(broadcastLong);
+}
+
+function validateIPv4(ip, label) {
+  const parts = String(ip).trim().split('.');
+  if (parts.length !== 4) {
+    throw new Error(`${label} must be a valid IPv4 address.`);
+  }
+
+  for (const part of parts) {
+    if (!/^\d+$/.test(part)) {
+      throw new Error(`${label} must be a valid IPv4 address.`);
+    }
+
+    const value = Number(part);
+    if (value < 0 || value > 255) {
+      throw new Error(`${label} must be a valid IPv4 address.`);
+    }
+  }
+}
+
+function validateSubnetMask(mask) {
+  validateIPv4(mask, 'Subnet mask');
+  const maskLong = ipToLong(mask);
+  const inverted = (~maskLong) >>> 0;
+  if ((inverted & (inverted + 1)) !== 0) {
+    throw new Error('Subnet mask must be contiguous.');
+  }
+}
+
+function isInSameSubnet(ip, referenceIP, netmask) {
+  return calculateNetworkIP(ip, netmask) === calculateNetworkIP(referenceIP, netmask);
+}
+
+function validatePoolConfiguration(config) {
+  if (!isInSameSubnet(config.rangeStart, config.serverIP, config.subnetMask) ||
+      !isInSameSubnet(config.rangeEnd, config.serverIP, config.subnetMask)) {
+    throw new Error(
+      `IP range must stay in the same subnet as the selected interface (${config.networkIP}/${config.subnetMask}).`
+    );
+  }
+
+  if (config.router && !isInSameSubnet(config.router, config.serverIP, config.subnetMask)) {
+    throw new Error(
+      `Router must stay in the same subnet as the selected interface (${config.networkIP}/${config.subnetMask}).`
+    );
+  }
+
+  const start = ipToLong(config.rangeStart);
+  const end = ipToLong(config.rangeEnd);
+  const excluded = new Set([
+    config.serverIP,
+    config.router,
+    config.networkIP,
+    config.broadcastIP,
+  ]);
+
+  let usable = 0;
+  for (let current = start; current <= end; current++) {
+    if (!excluded.has(longToIP(current))) {
+      usable++;
+      break;
+    }
+  }
+
+  if (usable === 0) {
+    throw new Error('IP range contains only reserved addresses. Choose a larger usable range.');
   }
 }
 

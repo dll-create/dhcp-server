@@ -7,22 +7,28 @@
 class LeaseManager {
   constructor() {
     this.leases = new Map();        // MAC -> lease object
+    this.offers = new Map();        // MAC -> pending offer
     this.pool = [];                 // Available IP addresses
+    this.excludedIPs = new Set();   // Server/router/network/broadcast
     this.rangeStart = '';
     this.rangeEnd = '';
     this.subnetMask = '255.255.255.0';
     this.defaultLeaseTime = 3600;   // 1 hour in seconds
+    this.offerTimeoutMs = 60000;    // 1 minute to complete DISCOVER -> REQUEST
     this.cleanupTimer = null;
   }
 
   /**
    * Configure the IP pool from a range.
    */
-  configure({ rangeStart, rangeEnd, subnetMask, leaseTime }) {
+  configure({ rangeStart, rangeEnd, subnetMask, leaseTime, excludedIPs }) {
     this.rangeStart = rangeStart;
     this.rangeEnd = rangeEnd;
     this.subnetMask = subnetMask || '255.255.255.0';
     this.defaultLeaseTime = leaseTime || 3600;
+    this.excludedIPs = new Set((excludedIPs || []).filter(Boolean));
+    this.leases.clear();
+    this.offers.clear();
 
     // Build the pool
     this.pool = [];
@@ -51,6 +57,7 @@ class LeaseManager {
    */
   getOffer(mac) {
     const normalizedMac = mac.toLowerCase();
+    const now = Date.now();
 
     // Check existing lease
     const existing = this.leases.get(normalizedMac);
@@ -58,14 +65,46 @@ class LeaseManager {
       return existing.ip;
     }
 
+    // Reuse an active pending offer for the same MAC
+    const pendingOffer = this.offers.get(normalizedMac);
+    if (pendingOffer && pendingOffer.expiresAt > now && !this.isAllocated(pendingOffer.ip)) {
+      return pendingOffer.ip;
+    }
+
+    this.offers.delete(normalizedMac);
+
     // Find an available IP from the pool
     for (const ip of this.pool) {
-      if (!this.isAllocated(ip)) {
+      if (!this.isReserved(ip, normalizedMac, now)) {
+        this.offers.set(normalizedMac, {
+          mac: normalizedMac,
+          ip,
+          expiresAt: now + this.offerTimeoutMs,
+        });
         return ip;
       }
     }
 
     return null; // Pool exhausted
+  }
+
+  /**
+   * Peek an already reserved IP for a MAC address without creating a new offer.
+   */
+  getReservedIP(mac) {
+    const normalizedMac = mac.toLowerCase();
+    const existing = this.leases.get(normalizedMac);
+    if (existing && !this.isExpired(existing)) {
+      return existing.ip;
+    }
+
+    const pendingOffer = this.offers.get(normalizedMac);
+    if (pendingOffer && pendingOffer.expiresAt > Date.now()) {
+      return pendingOffer.ip;
+    }
+
+    this.offers.delete(normalizedMac);
+    return null;
   }
 
   /**
@@ -85,6 +124,14 @@ class LeaseManager {
     };
 
     this.leases.set(normalizedMac, lease);
+    this.offers.delete(normalizedMac);
+
+    for (const [offerMac, offer] of this.offers) {
+      if (offer.ip === ip) {
+        this.offers.delete(offerMac);
+      }
+    }
+
     return lease;
   }
 
@@ -93,7 +140,9 @@ class LeaseManager {
    */
   release(mac) {
     const normalizedMac = mac.toLowerCase();
-    return this.leases.delete(normalizedMac);
+    const hadLease = this.leases.delete(normalizedMac);
+    const hadOffer = this.offers.delete(normalizedMac);
+    return hadLease || hadOffer;
   }
 
   /**
@@ -130,6 +179,28 @@ class LeaseManager {
   }
 
   /**
+   * Check if an IP is blocked by exclusions, active leases, or other pending offers.
+   */
+  isReserved(ip, requestingMac, now = Date.now()) {
+    if (this.excludedIPs.has(ip) || this.isAllocated(ip)) {
+      return true;
+    }
+
+    for (const [offerMac, offer] of this.offers) {
+      if (offer.expiresAt <= now) {
+        this.offers.delete(offerMac);
+        continue;
+      }
+
+      if (offer.ip === ip && offerMac !== requestingMac) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Check if a lease has expired.
    */
   isExpired(lease) {
@@ -148,6 +219,13 @@ class LeaseManager {
         cleaned++;
       }
     }
+
+    for (const [mac, offer] of this.offers) {
+      if (offer.expiresAt < now) {
+        this.offers.delete(mac);
+      }
+    }
+
     return cleaned;
   }
 
@@ -189,6 +267,7 @@ class LeaseManager {
    */
   reset() {
     this.leases.clear();
+    this.offers.clear();
     this.stopCleanup();
   }
 }

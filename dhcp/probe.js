@@ -8,7 +8,9 @@
 
 const dgram = require('dgram');
 const crypto = require('crypto');
+const os = require('os');
 const protocol = require('./protocol');
+const { ipToLong, longToIP } = require('./leases');
 
 const { MESSAGE_TYPES, OPTIONS } = protocol;
 
@@ -25,6 +27,17 @@ function probeForDHCP(interfaceName) {
   return new Promise((resolve) => {
     const servers = [];
     let socket;
+    let broadcastIP = '255.255.255.255';
+
+    if (interfaceName) {
+      const ifaceInfo = getInterfaceIP(interfaceName);
+      if (!ifaceInfo) {
+        resolve({ safe: true, servers: [], error: `Interface not found: ${interfaceName}` });
+        return;
+      }
+
+      broadcastIP = calculateBroadcastIP(ifaceInfo.address, ifaceInfo.netmask);
+    }
 
     try {
       socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
@@ -98,7 +111,7 @@ function probeForDHCP(interfaceName) {
       };
 
       const buf = protocol.encode(discover);
-      socket.send(buf, 0, buf.length, 67, '255.255.255.255', (err) => {
+      socket.send(buf, 0, buf.length, 67, broadcastIP, (err) => {
         if (err) {
           cleanup();
           resolve({ safe: true, servers: [], error: err.message });
@@ -107,6 +120,21 @@ function probeForDHCP(interfaceName) {
       });
     });
   });
+}
+
+function getInterfaceIP(ifaceName) {
+  const ifaces = os.networkInterfaces();
+  const iface = ifaces[ifaceName];
+  if (!iface) return null;
+
+  return iface.find(i => i.family === 'IPv4' && !i.internal) || null;
+}
+
+function calculateBroadcastIP(ip, netmask) {
+  const maskLong = ipToLong(netmask);
+  const networkLong = (ipToLong(ip) & maskLong) >>> 0;
+  const broadcastLong = (networkLong | (~maskLong >>> 0)) >>> 0;
+  return longToIP(broadcastLong);
 }
 
 module.exports = { probeForDHCP };
