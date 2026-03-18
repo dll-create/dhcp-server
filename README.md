@@ -28,8 +28,10 @@ A lightweight, cross-platform DHCP server with a modern web UI — built for fie
 ### Homebrew
 
 ```bash
-# Install
+# Tap this repository as a Homebrew formula source
 brew tap dll-create/dhcp-server https://github.com/dll-create/dhcp-server
+
+# Install
 brew install dhcp-server
 
 # Upgrade
@@ -93,6 +95,8 @@ sudo npx electron .      # Full DHCP functionality
 
 ```
 dhcp-server/
+├── Formula/
+│   └── dhcp-server.rb  # Homebrew tap formula
 ├── server.js            # Express HTTP server + REST API
 ├── main.js              # Electron main process (optional)
 ├── dhcp/
@@ -104,6 +108,8 @@ dhcp-server/
 │   ├── index.html       # Single-page UI
 │   ├── index.css        # Dark theme + glassmorphism
 │   └── app.js           # Frontend logic + i18n
+├── homebrew/
+│   └── dhcp-server.rb   # Legacy standalone formula path
 └── start.sh             # macOS launcher with sudo
 ```
 
