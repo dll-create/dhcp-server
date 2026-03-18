@@ -1,6 +1,6 @@
 {
   "name": "dhcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "macOS DHCP Server with native UI for BMC network provisioning",
   "main": "main.js",
   "scripts": {
